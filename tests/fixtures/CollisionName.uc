@@ -1,0 +1,1 @@
+class CollisionName extends Object;

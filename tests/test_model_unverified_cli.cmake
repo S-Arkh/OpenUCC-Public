@@ -1,0 +1,55 @@
+if(NOT DEFINED CLI OR NOT DEFINED FIXTURE_TOOL OR NOT DEFINED TEST_DIR)
+  message(FATAL_ERROR "Missing test paths")
+endif()
+string(RANDOM LENGTH 16 ALPHABET 0123456789abcdef run)
+set(source "${TEST_DIR}/model-unverified-${run}.u")
+set(output "${source}.copy")
+execute_process(COMMAND "${FIXTURE_TOOL}" "${source}"
+  RESULT_VARIABLE generated OUTPUT_VARIABLE generated_out ERROR_VARIABLE generated_err)
+if(NOT generated EQUAL 0)
+  message(FATAL_ERROR "Fixture failed: ${generated_out} ${generated_err}")
+endif()
+execute_process(COMMAND "${CLI}" rebuild-resources "${source}" "${output}"
+  RESULT_VARIABLE status OUTPUT_VARIABLE result ERROR_VARIABLE warnings)
+if(NOT status EQUAL 0 OR NOT result MATCHES "\"status\":\"unchanged_copy\"" OR
+   NOT result MATCHES "\"reconstruction_performed\":false" OR
+   NOT warnings MATCHES "WARNING.*Unverified Model")
+  message(FATAL_ERROR "Expected warned unchanged copy: ${status} ${result} ${warnings}")
+endif()
+file(SHA256 "${source}" source_hash)
+file(SHA256 "${output}" output_hash)
+if(NOT source_hash STREQUAL output_hash)
+  message(FATAL_ERROR "Unverified source was changed")
+endif()
+execute_process(COMMAND "${CLI}" rebuild-resources "${source}.ver121" "${output}.ver121"
+  RESULT_VARIABLE ver_status OUTPUT_VARIABLE ver_result ERROR_VARIABLE ver_warnings)
+if(NOT ver_status EQUAL 0 OR NOT ver_result MATCHES "\"status\":\"unchanged_copy\"" OR
+   NOT ver_warnings MATCHES "Ver121 encryption depends on the filename")
+  message(FATAL_ERROR "Expected Ver121 filename warning: ${ver_status} ${ver_result} ${ver_warnings}")
+endif()
+file(SHA256 "${source}.ver121" ver_source_hash)
+file(SHA256 "${output}.ver121" ver_output_hash)
+if(NOT ver_source_hash STREQUAL ver_output_hash)
+  message(FATAL_ERROR "Unverified Ver121 source was changed")
+endif()
+execute_process(COMMAND "${CLI}" rebuild-resources "${source}.invalid" "${output}.invalid"
+  RESULT_VARIABLE invalid OUTPUT_VARIABLE invalid_out ERROR_VARIABLE invalid_err)
+if(invalid EQUAL 0 OR EXISTS "${output}.invalid" OR NOT invalid_err MATCHES "Noncanonical Model")
+  message(FATAL_ERROR "Malformed known Model was not rejected: ${invalid} ${invalid_out} ${invalid_err}")
+endif()
+execute_process(COMMAND "${CLI}" rebuild-resources "${source}.mixed" "${output}.mixed"
+  RESULT_VARIABLE mixed OUTPUT_VARIABLE mixed_out ERROR_VARIABLE mixed_err)
+if(mixed EQUAL 0 OR EXISTS "${output}.mixed" OR NOT mixed_err MATCHES "Noncanonical Model")
+  message(FATAL_ERROR "Opaque Model hid a later malformed export: ${mixed} ${mixed_out} ${mixed_err}")
+endif()
+execute_process(COMMAND "${CLI}" rebuild-resources "${source}" "${output}"
+  RESULT_VARIABLE exists OUTPUT_VARIABLE exists_out ERROR_VARIABLE exists_err)
+if(exists EQUAL 0 OR NOT exists_err MATCHES "Output already exists")
+  message(FATAL_ERROR "Existing output was overwritten: ${exists} ${exists_out} ${exists_err}")
+endif()
+file(SHA256 "${output}" after_hash)
+if(NOT after_hash STREQUAL output_hash)
+  message(FATAL_ERROR "Existing output changed")
+endif()
+file(REMOVE "${source}" "${source}.invalid" "${source}.mixed" "${source}.ver121"
+     "${output}" "${output}.ver121")

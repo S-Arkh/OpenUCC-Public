@@ -1,0 +1,1 @@
+class ClassLinkFlagsReference extends Object native noexport safereplace editinlinenew collapsecategories;

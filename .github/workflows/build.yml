@@ -1,0 +1,30 @@
+name: Build and test
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      matrix:
+        # Match the Windows runner used by the release workflow.
+        os: [ubuntu-latest, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build build --config Release --parallel
+      - run: ctest --test-dir build -C Release --output-on-failure
+      - run: python -B -m unittest discover -s tests -p "test_*.py"
+      - name: Verify Windows portable archive
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $revision = git rev-parse HEAD
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -B tools/package_portable.py --version 0.0.0-ci.1 --revision $revision --exe build/Release/openucc.exe --fixture-tool build/Release/openucc_portable_fixture.exe --out "$env:RUNNER_TEMP/openucc-ci-portable"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
